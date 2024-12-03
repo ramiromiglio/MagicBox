@@ -3,21 +3,25 @@ from PyQt6.QtCore import *
 from PyQt6.QtGui import *
 
 class BasicDialog(QDialog):
-    onClose = pyqtSignal(bool)
+    signal_Reject = pyqtSignal()
+    signal_Accept = pyqtSignal()
+    signal_Close = pyqtSignal(bool)
 
     def __init__(self, widget, buttonText, parent):
         super().__init__(parent)
         self.setLayout(QVBoxLayout())
-        if widget:
-            self.layout().addWidget(widget)
-        button = QPushButton(buttonText)
+        widget.setParent(self)
+        self.layout().addWidget(widget)
+        button = QPushButton(buttonText, self)
         button.clicked.connect(self.onButtonClick)
         self.layout().addWidget(button)
         self.show()
     
     def onButtonClick(self):
-        self.onClose.emit(True)
+        self.signal_Accept.emit()
+        self.signal_Close.emit(True)
         self.accept()
 
     def closeEvent(self, e):
-        self.onClose.emit(False)
+        self.signal_Reject.emit()
+        self.signal_Close.emit(False)
