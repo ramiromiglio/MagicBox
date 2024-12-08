@@ -11,15 +11,7 @@ from typing import Dict
 
 from item_data_constants import ItemDataConstants
 
-class AssetImagesSceneWidget(QGraphicsView):
-    def __init__(self, asset_data: AssetData):
-        super().__init__()
-        self.__asset_data = asset_data
-        self.__scene = QGraphicsScene()
-        self.setScene(self.__scene)
-        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-        self.setSceneRect(-10000, -10000, 20000, 20000)
-    
+class AssetGraphicsView(QGraphicsView):
     def wheelEvent(self, event):
         angle = event.angleDelta()
         if angle.y() > 0:
@@ -27,6 +19,26 @@ class AssetImagesSceneWidget(QGraphicsView):
         else:
             wheel = 0.8
         self.scale(wheel, wheel)
+
+class AssetImagesSceneWidget(QWidget):
+    def __init__(self, parent, asset_data: AssetData):
+        super().__init__(parent)
+        self.setLayout(QVBoxLayout())
+        self.__asset_data = asset_data
+        self.__list_view = QListWidget(self)
+        self.__list_view.setWindowTitle("Reference Images")
+        self.__list_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.__list_view.customContextMenuRequested.connect(self.showContextMenuForImageList)
+        self.__list_view.setMinimumWidth(150)
+        self.__list_view.itemDoubleClicked.connect(self.focusImage)
+        self.__scene = QGraphicsScene(self)
+        self.__graphics_view = AssetGraphicsView(self.__scene, self)
+        self.__graphics_view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.__graphics_view.setSceneRect(-10000, -10000, 20000, 20000)
+        splitter = QSplitter(self)
+        splitter.addWidget(self.__list_view)
+        splitter.addWidget(self.__graphics_view)
+        self.layout().addWidget(splitter)    
     
     def focus(self, image_path):
         # First, deselect all
@@ -36,10 +48,43 @@ class AssetImagesSceneWidget(QGraphicsView):
         fucused_items = list(filter(lambda item: item.data(ItemDataConstants.DATA_FILE_FULL_PATH) ==
                                     image_path, self.__scene.items()))
         if len(fucused_items) > 0:
-            self.centerOn(fucused_items[0])
+            self.__graphics_view.centerOn(fucused_items[0])
             fucused_items[0].setSelected(True)
 
+    def showContextMenuForImageList(self, pos):
+        menu = QMenu(self)
+        if len(self.__list_view.selectedItems()) == 0:
+            action = QAction("Add image", self)
+            action.triggered.connect(self.addImage)
+        else:
+            action = QAction("Delete", self)
+            action.triggered.connect(self.deleteImage)
+        menu.addAction(action)
+        menu.exec(self.__list_view.mapToGlobal(pos))
+
+    def addImage(self):
+        filepath = QFileDialog.getOpenFileName(self, "Open Image", None,
+                                               "Image Files (*.png *.jpg *.bmp);;All files (*)")
+        self.__asset_data.addImage(filepath[0])
+    
+    def deleteImage(self):
+        filepath = self.__list_view.currentItem().data(ItemDataConstants.DATA_FILE_FULL_PATH)
+        self.__asset_data.deleteImage(filepath)
+    
+    def focusImage(self, item):
+        self.focus(item.data(ItemDataConstants.DATA_FILE_FULL_PATH))
+
     def update(self):
+        # List view
+        self.__list_view.clear()
+        for image_path in self.__asset_data.images():
+            item = QListWidgetItem(os.path.basename(image_path))
+            item.setData(ItemDataConstants.DATA_FILE_FULL_PATH, image_path)
+            icon = QIcon(os.path.join(os.path.dirname(__file__), "icons", "image_icon.png"))
+            item.setIcon(icon)
+            self.__list_view.addItem(item)
+
+        # Scene view
         sizes = []
         spacing = QPoint(40, 40)
         scene_images = list(map(lambda item: item.data(ItemDataConstants.DATA_FILE_FULL_PATH), self.__scene.items()))
@@ -111,54 +156,27 @@ class AssetImagesSceneWidget(QGraphicsView):
             #item.setFlag(QGraphicsPixmapItem.GraphicsItemFlag.ItemIsSelectable, False)
         pass
 
+class AssetResultWidget(QWidget):
+    pass
+
+class AssetHistoryWidget(QWidget):
+    pass
+
 class AssetPanelWidget(QWidget):    
 
     def __init__(self, asset_data: AssetData):
         super().__init__()
         self.setLayout(QHBoxLayout())
-        self.__list_view = QListWidget()
-        self.__list_view.setWindowTitle("Reference Images")
-        self.__list_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.__list_view.customContextMenuRequested.connect(self.showContextMenuForImageList)
-        self.__list_view.setMinimumWidth(150)
-        self.__list_view.itemDoubleClicked.connect(self.focusImage)
-        self.__images_scene = AssetImagesSceneWidget(asset_data)
         self.__asset_data = asset_data
-        self.layout().addWidget(self.__list_view)
-        self.layout().addWidget(self.__images_scene)
+        self.__images_scene = AssetImagesSceneWidget(self, asset_data)
+        self.__result_image = AssetResultWidget(self)
+        self.__tabs = QTabWidget(self)
+        self.__tabs.addTab(self.__images_scene, "Scene")
+        self.__tabs.addTab(self.__result_image, "Output")
+        self.layout().addWidget(self.__tabs)
     
     def update(self):
         self.__images_scene.update()
-        self.__list_view.clear()
-        for image_path in self.__asset_data.images():
-            item = QListWidgetItem(os.path.basename(image_path))
-            item.setData(ItemDataConstants.DATA_FILE_FULL_PATH, image_path)
-            icon = QIcon(os.path.join(os.path.dirname(__file__), "icons", "image_icon.png"))
-            item.setIcon(icon)
-            self.__list_view.addItem(item)
-    
-    def showContextMenuForImageList(self, pos):
-        menu = QMenu(self)
-        if len(self.__list_view.selectedItems()) == 0:
-            action = QAction("Add image", self)
-            action.triggered.connect(self.addImage)
-        else:
-            action = QAction("Delete", self)
-            action.triggered.connect(self.deleteImage)
-        menu.addAction(action)
-        menu.exec(self.__list_view.mapToGlobal(pos))
-    
-    def addImage(self):
-        filepath = QFileDialog.getOpenFileName(self, "Open Image", None,
-                                               "Image Files (*.png *.jpg *.bmp);;All files (*)")
-        self.__asset_data.addImage(filepath[0])
-    
-    def deleteImage(self):
-        filepath = self.__list_view.currentItem().data(ItemDataConstants.DATA_FILE_FULL_PATH)
-        self.__asset_data.deleteImage(filepath)
-    
-    def focusImage(self, item):
-        self.__images_scene.focus(item.data(ItemDataConstants.DATA_FILE_FULL_PATH))
 
 class AssetWidget(QWidget):
     def __init__(self, asset_data: AssetData):
